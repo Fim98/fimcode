@@ -82,6 +82,37 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+async function compactConversation(
+  messages: Anthropic.MessageParam[]
+): Promise<Anthropic.MessageParam[]> {
+  const summaryPrompt = `简洁地总结此对话,保留:
+    - 原始任务
+    - 关键发现和决策
+    - 工作的当前状态
+    - 还需要做什么`;
+
+  const summary = await client.messages.create({
+    model: "glm-4.7",
+    max_tokens: 2000,
+    messages: [
+      {
+        role: "user",
+        content: `${JSON.stringify(messages)}\n\n${summaryPrompt}`,
+      },
+    ],
+  });
+
+  const summaryText =
+    summary.content[0]?.type === "text" ? summary.content[0].text : "";
+
+  return [
+    {
+      role: "user",
+      content: `先前工作总结：\n${summaryText}`,
+    },
+  ];
+}
+
 async function executeTool(name: string, input: any): Promise<string> {
   if (name === "read_file") {
     try {
