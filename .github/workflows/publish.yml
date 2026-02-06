@@ -76,15 +76,18 @@ jobs:
           # Linux x64
           - os: ubuntu-latest
             target: linux-x64
-          # Linux ARM64
-          - os: ubuntu-24.04-arm
+          # Linux ARM64 (交叉编译)
+          - os: ubuntu-latest
             target: linux-arm64
           # macOS x64
-          - os: macos-13
+          - os: macos-13-intel
             target: darwin-x64
-          # macOS ARM64
+          # macOS ARM64 (Apple Silicon)
           - os: macos-latest
             target: darwin-arm64
+          # Windows x64
+          - os: windows-latest
+            target: win32-x64
 
     steps:
       - name: Checkout
@@ -109,19 +112,21 @@ jobs:
           RELEASE: "true"
           TARGETS: ${{ matrix.target }}
 
-      - name: Upload artifacts
+      - name: Upload artifacts (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.target }}
           path: dist/*.tar.gz
-          if-no-files-found: ignore
+          if-no-files-found: error
 
-      - name: Upload artifacts (zip)
+      - name: Upload artifacts (Windows)
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.target }}-zip
+          name: binaries-${{ matrix.target }}
           path: dist/*.zip
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   publish-github:
     needs: [version, build]

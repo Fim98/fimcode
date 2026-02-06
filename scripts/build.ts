@@ -150,8 +150,32 @@ async function packageTarget(target: typeof allTargets[number]): Promise<string>
 
     console.log(`✅ 打包完成: ${archivePath}`);
     return archivePath;
+  } else if (target.os === "win32") {
+    // Windows 使用 PowerShell Compress-Archive
+    const archiveName = `${targetName}.zip`;
+    const archivePath = path.join("dist", archiveName);
+
+    console.log(`📦 打包 ${archiveName}...`);
+
+    const result = spawnSync(
+      "powershell",
+      [
+        "-Command",
+        `Compress-Archive -Path '${binDir}/*' -DestinationPath '${archivePath}' -Force`,
+      ],
+      {
+        stdio: "ignore",
+      }
+    );
+
+    if (result.status !== 0) {
+      throw new Error(`打包 ${targetName} 失败`);
+    }
+
+    console.log(`✅ 打包完成: ${archivePath}`);
+    return archivePath;
   } else {
-    // macOS 和 Windows 使用 zip
+    // macOS 使用 zip
     const archiveName = `${targetName}.zip`;
     const archivePath = path.join("dist", archiveName);
 
