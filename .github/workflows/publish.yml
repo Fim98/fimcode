@@ -18,6 +18,10 @@ on:
           - major
         default: "patch"
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   version:
     runs-on: ubuntu-latest
@@ -36,7 +40,7 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Calculate Version & Create Release
+      - name: Calculate Version
         id: version
         run: bun ./scripts/version.ts
         env:
@@ -50,6 +54,17 @@ jobs:
         with:
           name: version-info
           path: dist/version.txt
+
+      - name: Create GitHub Release Draft
+        if: steps.version.outputs.release == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --draft \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     needs: version
@@ -141,7 +156,6 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
 
       - name: Publish Release
-        if: needs.version.outputs.release == 'true'
         run: gh release edit "v${VERSION}" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -239,6 +239,22 @@ async function buildNotes(from: string | null, to: string): Promise<string> {
  * 创建 GitHub Release
  */
 async function createGitHubRelease(version: string, notes: string, isDraft: boolean): Promise<void> {
+  // 检查是否有 GH_TOKEN
+  if (!Script.ghToken) {
+    console.log("\n⚠️  跳过创建 GitHub Release（未设置 GH_TOKEN）");
+    return;
+  }
+
+  // 检查 gh CLI 是否安装
+  const ghCheck = spawnSync("gh", ["--version"], {
+    stdio: "ignore",
+    encoding: "utf-8",
+  });
+  if (ghCheck.status !== 0) {
+    console.log("\n⚠️  跳过创建 GitHub Release（未安装 gh CLI）");
+    return;
+  }
+
   const tag = `v${version}`;
 
   // 写入 notes 文件
@@ -272,7 +288,9 @@ async function createGitHubRelease(version: string, notes: string, isDraft: bool
   });
 
   if (result.status !== 0) {
-    throw new Error("创建 GitHub Release 失败");
+    console.warn("⚠️  创建 GitHub Release 失败，继续执行...");
+    // 不抛出错误，允许工作流继续
+    return;
   }
 
   console.log("✅ Release 创建成功");
@@ -299,8 +317,9 @@ function outputGitHubActions(version: string, channel: string, isRelease: boolea
  * 保存版本信息到文件
  */
 function saveVersionInfo(version: string, channel: string): void {
-  if (!existsSync(path.dirname(Script.output))) {
-    mkdirSync(path.dirname(Script.output), { recursive: true });
+  const dir = path.dirname(Script.output);
+  if (dir !== "." && !existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
 
   const content = `VERSION=${version}\nCHANNEL=${channel}\nBUILD_TIME=${new Date().toISOString()}\nSHA=${Script.sha}\n`;
