@@ -1,0 +1,128 @@
+#!/usr/bin/env node
+/**
+ * FimCode CLI - Node.js 包装器脚本
+ *
+ * 用于 npm 全局安装时，自动检测平台并调用对应的二进制文件
+ */
+
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { spawnSync } = require("child_process");
+
+const PROJECT_NAME = "fimcode";
+const BINARY_NAME = os.platform() === "win32" ? "fimcode.exe" : "fimcode";
+
+// 检测当前平台
+const platformMap = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "win32",
+};
+const archMap = {
+  x64: "x64",
+  arm64: "arm64",
+};
+
+const platform = platformMap[os.platform()] || os.platform();
+const arch = archMap[os.arch()] || os.arch();
+const baseName = `${PROJECT_NAME}-${platform}-${arch}`;
+
+/**
+ * 查找平台特定的二进制文件
+ */
+function findBinary(startDir) {
+  let current = startDir;
+
+  for (;;) {
+    // 检查 node_modules
+    const modulesPath = path.join(current, "node_modules");
+    if (fs.existsSync(modulesPath)) {
+      try {
+        const entries = fs.readdirSync(modulesPath);
+        for (const entry of entries) {
+          // 查找匹配的包名
+          if (entry.startsWith(`${PROJECT_NAME}-${platform}`)) {
+            const candidate = path.join(
+              modulesPath,
+              entry,
+              "bin",
+              BINARY_NAME
+            );
+            if (fs.existsSync(candidate)) {
+              return candidate;
+            }
+          }
+        }
+      } catch {
+        // 忽略错误，继续向上查找
+      }
+    }
+
+    // 向上查找
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+
+  return null;
+}
+
+/**
+ * 查找本地二进制文件（开发模式）
+ */
+function findLocalBinary() {
+  const scriptDir = __dirname;
+
+  // 检查常见的本地路径
+  const localPaths = [
+    path.join(scriptDir, "..", "dist", baseName, "bin", BINARY_NAME),
+    path.join(scriptDir, "..", "dist", `${baseName}-musl`, "bin", BINARY_NAME),
+    path.join(scriptDir, PROJECT_NAME),
+    path.join(scriptDir, `${PROJECT_NAME}.ts`),
+  ];
+
+  for (const p of localPaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 主函数
+ */
+function main() {
+  // 1. 先尝试查找本地二进制文件（开发模式）
+  let binaryPath = findLocalBinary();
+
+  // 2. 如果没有找到，尝试在 node_modules 中查找
+  if (!binaryPath) {
+    binaryPath = findBinary(__dirname);
+  }
+
+  // 3. 如果还是没有找到，报错
+  if (!binaryPath) {
+    console.error(`错误: 找不到 ${PROJECT_NAME} 的二进制文件`);
+    console.error(`平台: ${platform}-${arch}`);
+    console.error("");
+    console.error("可能的解决方案:");
+    console.error("1. 重新安装: npm install -g fimcode");
+    console.error("2. 使用 curl 安装: curl -fsSL ... | bash");
+    console.error("3. 检查是否支持您的平台");
+    process.exit(1);
+  }
+
+  // 执行二进制文件
+  const result = spawnSync(binaryPath, process.argv.slice(2), {
+    stdio: "inherit",
+    cwd: process.cwd(),
+  });
+
+  // 传递退出码
+  process.exit(result.status ?? 0);
+}
+
+main();

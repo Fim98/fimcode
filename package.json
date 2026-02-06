@@ -6,7 +6,7 @@
   "type": "module",
   "private": true,
   "bin": {
-    "fimcode": "./bin/fimcode.ts"
+    "fimcode": "./bin/fimcode"
   },
   "scripts": {
     "dev": "bun ./scripts/dev.ts",
@@ -16,7 +16,11 @@
     "test:unit": "bun test tests/unit",
     "test:watch": "bun test --watch",
     "build": "bun ./scripts/build.ts",
-    "clean": "rm -rf dist"
+    "build:release": "bun ./scripts/build.ts",
+    "version": "bun ./scripts/version.ts",
+    "publish": "bun ./scripts/publish.ts",
+    "clean": "rm -rf dist",
+    "postinstall": "node ./scripts/postinstall.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -29,14 +33,31 @@
     "zod": "^4.3.5"
   },
   "engines": {
-    "bun": ">=1.0.0"
+    "bun": ">=1.0.0",
+    "node": ">=18.0.0"
   },
   "keywords": [
     "ai",
     "coding",
     "agent",
     "claude",
-    "assistant"
+    "assistant",
+    "cli"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fim98/fimcode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Fim98/fimcode/issues"
+  },
+  "homepage": "https://github.com/Fim98/fimcode#readme",
+  "files": [
+    "bin/",
+    "dist/",
+    "scripts/postinstall.mjs",
+    "package.json",
+    "README.md"
+  ]
 }

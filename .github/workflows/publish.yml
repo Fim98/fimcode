@@ -1,0 +1,188 @@
+name: publish
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - beta
+      - snapshot-*
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "版本升级类型"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: "patch"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Calculate Version & Create Release
+        id: version
+        run: bun ./scripts/version.ts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP: ${{ inputs.bump }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Upload version info
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-info
+          path: dist/version.txt
+
+  build:
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x64
+          - os: ubuntu-latest
+            target: linux-x64
+          # Linux ARM64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          # macOS x64
+          - os: macos-13
+            target: darwin-x64
+          # macOS ARM64
+          - os: macos-latest
+            target: darwin-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Download version info
+        uses: actions/download-artifact@v4
+        with:
+          name: version-info
+          path: dist/
+
+      - name: Build for ${{ matrix.target }}
+        run: bun ./scripts/build.ts
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
+          RELEASE: "true"
+          TARGETS: ${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: ignore
+
+      - name: Upload artifacts (zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}-zip
+          path: dist/*.zip
+          if-no-files-found: ignore
+
+  publish-github:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    if: needs.version.outputs.release == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Upload to GitHub Release
+        run: |
+          if ls dist/*.tar.gz dist/*.zip 1> /dev/null 2>&1; then
+            gh release upload "v${VERSION}" dist/*.tar.gz dist/*.zip --clobber
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+
+      - name: Publish Release
+        if: needs.version.outputs.release == 'true'
+        run: gh release edit "v${VERSION}" --draft=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+
+  publish-npm:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    if: needs.version.outputs.channel == 'latest'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: Update package.json
+        run: |
+          # 更新版本号
+          jq '.version = "${{ needs.version.outputs.version }}"' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          # 移除 private 标记
+          jq 'del(.private)' package.json > package.json.tmp
+          mv package.json.tmp package.json
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
